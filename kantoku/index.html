@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1d6fd6">
+<meta name="robots" content="noindex,nofollow">
+<title>定期テスト監督割り当て</title>
+<link rel="stylesheet" href="style.css?v=20261117125253">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="監督割り当て">
+<style>
+  [hidden]{display:none!important}
+  .gate{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}
+  .gate-box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:22px 20px;width:100%;max-width:360px}
+  .gate-box h1{font-size:18px;margin:0 0 6px}
+  .gate-box input[type=password]{width:100%;font-size:18px;padding:10px;margin:12px 0 8px;letter-spacing:.1em}
+  .gate-box button.b{width:100%;padding:11px;font-size:16px;margin-top:10px}
+  .gate-err{color:var(--bad);font-size:13px;min-height:1.4em;margin-top:8px}
+  .lockbar{float:right}
+</style>
+</head>
+<body>
+<div id="gate" class="gate">
+  <form class="gate-box" id="gateForm" autocomplete="off">
+    <h1>定期テスト監督割り当て</h1>
+    <div class="mut">利用コードを入力してください。</div>
+    <input type="password" id="gateCode" inputmode="text" autocomplete="current-password" aria-label="利用コード">
+    <label class="inl"><input type="checkbox" id="gateRemember" checked> この端末でコードを記憶する</label>
+    <button class="b" type="submit" id="gateBtn">開く</button>
+    <div class="gate-err" id="gateErr"></div>
+  </form>
+</div>
+
+<div id="appRoot" hidden>
+  <header class="top">
+    <button class="b sec sm lockbar" id="lockBtn" type="button">ロック</button>
+    <h1>定期テスト監督割り当て</h1>
+    <span class="sub">授業交換ナビの授業データを使って、出張・欠勤・出題者を避けつつ監督回数と教科をバランスよく割り当てます</span>
+    <div id="cloudStatus" class="sub" hidden></div>
+  </header>
+  <nav id="tabs" class="tabs"></nav>
+  <main id="view"></main>
+  <div id="toast" class="toast" hidden></div>
+</div>
+
+<script src="data.enc.js?v=20261117125253"></script>
+<script>
+(function () {
+  'use strict';
+  var STATE_KEY = 'teiki-test-kantoku-v1';
+  var CODE_KEY = 'kantoku-access-code';
+  var SEED_KEY = 'kantoku-seeded-at';
+  var VER = '20261117125253';
+
+  function b64(s) { var bin = atob(s); var a = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return a; }
+
+  async function decrypt(code) {
+    var enc = window.ENC_DATA;
+    var base = await crypto.subtle.importKey('raw', new TextEncoder().encode(code), 'PBKDF2', false, ['deriveKey']);
+    var key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64(enc.salt), iterations: enc.iter, hash: 'SHA-256' },
+      base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+    var plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(enc.iv) }, key, b64(enc.ct));
+    return JSON.parse(new TextDecoder().decode(plain));
+  }
+
+  function loadScript(src) {
+    return new Promise(function (res, rej) {
+      var s = document.createElement('script'); s.src = src + '?v=' + VER;
+      s.onload = res; s.onerror = function () { rej(new Error(src + ' を読み込めませんでした')); };
+      document.body.appendChild(s);
+    });
+  }
+
+  function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* ignore */ } }
+  function lsDel(k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } }
+
+  async function open(code, remember, silent) {
+    var err = document.getElementById('gateErr');
+    var payload;
+    try {
+      if (!window.crypto || !crypto.subtle) throw new Error('nocrypto');
+      payload = await decrypt(code);
+    } catch (e) {
+      if (e && e.message === 'nocrypto') { err.textContent = 'このブラウザでは開けません(https で開いてください)'; return; }
+      if (silent) { lsDel(CODE_KEY); return; }
+      err.textContent = '利用コードが違います';
+      return;
+    }
+    if (remember) lsSet(CODE_KEY, code); else lsDel(CODE_KEY);
+    window.IMPORTED_BASE = payload.base;
+    // この端末にまだデータが無ければ、公開時点のデータ(パソコン版から移したもの)を初期データとして入れる。
+    // 既にこの端末で使っている(データがある)場合は上書きしない(移し直すときは「データ連携」タブの読み込みを使う)。
+    if (!lsGet(STATE_KEY) && payload.state) {
+      lsSet(STATE_KEY, JSON.stringify(payload.state));
+      lsSet(SEED_KEY, payload.exportedAt || '');
+    }
+    document.getElementById('gate').hidden = true;
+    document.getElementById('appRoot').hidden = false;
+    try {
+      await loadScript('engine.js');
+      await loadScript('app.js');
+    } catch (e) {
+      document.getElementById('view').innerHTML = '<div class="card bad">' + e.message + '</div>';
+    }
+  }
+
+  document.getElementById('gateForm').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    document.getElementById('gateErr').textContent = '';
+    var code = document.getElementById('gateCode').value.trim();
+    if (!code) { document.getElementById('gateErr').textContent = '利用コードを入力してください'; return; }
+    open(code, document.getElementById('gateRemember').checked, false);
+  });
+  document.getElementById('lockBtn').addEventListener('click', function () {
+    lsDel(CODE_KEY);
+    location.reload();
+  });
+
+  var saved = lsGet(CODE_KEY);
+  if (saved) open(saved, true, true);
+  else document.getElementById('gateCode').focus();
+
+  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
+  }
+})();
+</script>
+</body>
+</html>
