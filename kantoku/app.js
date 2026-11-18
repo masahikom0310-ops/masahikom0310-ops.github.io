@@ -399,6 +399,7 @@
   var subjectEditTarget = null; // {scope:'grade',key,name} 編集中の教科(renderSubjectsのみで使う一時状態)
   var clearScheduleConfirmPending = false; // 「時間割をクリアして組み直す」の確認待ち状態(renderExamのみで使う一時状態)
   var restoreBackupConfirmPending = false; // 「このテキストで全データを復元」の確認待ち状態(renderDataのみで使う一時状態)
+  var restoreBackupText = ''; // 確認待ちの間も、貼り付けた内容が画面の描き直しで消えないように保持する
 
   // ---- tabs ----
   var TABS = [
@@ -563,26 +564,35 @@
       toast('全選択しました。コピー(Ctrl+C など)して貼り付けてください');
     };
 
+    var importTa = card4.querySelector('#backupImportTa');
+    importTa.value = restoreBackupText;
+    importTa.oninput = function () { restoreBackupText = importTa.value; };
     card4.querySelector('#backupRestoreBtn').onclick = function () {
-      var text = card4.querySelector('#backupImportTa').value.trim();
+      var text = importTa.value.trim();
+      restoreBackupText = importTa.value;
       if (!text) { toast('貼り付ける内容がありません'); return; }
+      var obj;
+      try {
+        obj = JSON.parse(text);
+        if (!obj || typeof obj !== 'object' || Array.isArray(obj)) throw new Error('内容が正しくありません');
+      } catch (e) {
+        restoreBackupConfirmPending = false;
+        toast('読み込み失敗: 貼り付けた内容が途中で切れているか、正しくありません(' + e.message + ')');
+        return;
+      }
       if (!restoreBackupConfirmPending) {
         restoreBackupConfirmPending = true;
-        toast('今のすべてのデータを、貼り付けた内容で置き換えます。もう一度押すと実行します。');
+        var planCount = Array.isArray(obj.plans) ? obj.plans.length : 0;
+        toast('今のすべてのデータを、貼り付けた内容(案' + planCount + '件を含む)で置き換えます。もう一度押すと実行します。');
         renderAll();
         return;
       }
       restoreBackupConfirmPending = false;
-      try {
-        var obj = JSON.parse(text);
-        if (!obj || typeof obj !== 'object' || Array.isArray(obj)) throw new Error('内容が正しくありません');
-        state = normalizeSubjectGroups(Object.assign(defaultState(), obj));
-        saveState();
-        toast('全データを復元しました');
-        renderAll();
-      } catch (e) {
-        toast('読み込み失敗: ' + e.message);
-      }
+      restoreBackupText = '';
+      state = normalizeSubjectGroups(Object.assign(defaultState(), obj));
+      saveState();
+      toast('全データを復元しました' + (Array.isArray(state.plans) && state.plans.length ? '(案' + state.plans.length + '件)' : ''));
+      renderAll();
     };
   }
 
