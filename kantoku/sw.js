@@ -1,6 +1,6 @@
 // オフライン対応: ネットにつながっていれば常に最新を取り、つながらないときは保存しておいたものを使う。
-var CACHE = 'kantoku-20261117125253';
-var SHELL = ['./', 'index.html', 'style.css?v=20261117125253', 'data.enc.js?v=20261117125253', 'engine.js?v=20261117125253', 'app.js?v=20261117125253',
+var CACHE = 'kantoku-20261118114911';
+var SHELL = ['./', 'index.html', 'style.css?v=20261118114911', 'data.enc.js?v=20261118114911', 'engine.js?v=20261118114911', 'app.js?v=20261118114911',
   'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon-180.png'];
 
 self.addEventListener('install', function (e) {

@@ -473,12 +473,12 @@
 
     var card2 = document.createElement('div');
     card2.className = 'card';
-    card2.innerHTML = '<h2>教員一覧</h2><p class="mut">管理職など監督に入らない教員は「監督対象外」をチェックしてください。「教科」は授業交換ナビから読み込んだ担当教科(部活動の部ではなく教科)で、誤りがあれば直接修正できます。「上限」に数値を入れると、その教員の監督回数(予備以外)がその回数を超えないようにします(空欄=無制限)。</p>';
+    card2.innerHTML = '<h2>教員一覧</h2><p class="mut">管理職など監督に入らない教員は「監督対象外」をチェックしてください。「教科」は授業交換ナビから読み込んだ担当教科(部活動の部ではなく教科)で、誤りがあれば直接修正できます。「上限」に数値を入れると、その教員の監督回数(予備以外)がその回数を超えないようにします(空欄=無制限)。「予備のみ」をチェックすると、その教員は予備(バックアップ)監督にだけ割り当て、試験監督や自習の見守りには入れません。</p>';
     var tbl = document.createElement('table');
-    tbl.innerHTML = '<tr><th>氏名</th><th>教科</th><th>監督対象外</th><th>上限(回)</th></tr>';
+    tbl.innerHTML = '<tr><th>氏名</th><th>教科</th><th>監督対象外</th><th>予備のみ</th><th>上限(回)</th></tr>';
     state.teachers.forEach(function (t) {
       var tr = document.createElement('tr');
-      tr.innerHTML = '<td>' + esc(t.name) + '</td><td></td><td></td><td></td>';
+      tr.innerHTML = '<td>' + esc(t.name) + '</td><td></td><td></td><td></td><td></td>';
       var deptIn = document.createElement('input');
       deptIn.type = 'text'; deptIn.value = t.dept || '';
       deptIn.onchange = function () { t.dept = deptIn.value.trim(); saveState(); };
@@ -487,6 +487,10 @@
       cb.type = 'checkbox'; cb.checked = !!t.noCover;
       cb.onchange = function () { t.noCover = cb.checked; saveState(); };
       tr.cells[2].appendChild(cb);
+      var rcb = document.createElement('input');
+      rcb.type = 'checkbox'; rcb.checked = !!t.reserveOnly;
+      rcb.onchange = function () { if (rcb.checked) t.reserveOnly = true; else delete t.reserveOnly; saveState(); };
+      tr.cells[3].appendChild(rcb);
       var maxIn = document.createElement('input');
       maxIn.type = 'number'; maxIn.min = '0'; maxIn.placeholder = '無制限';
       if (t.maxCount != null) maxIn.value = t.maxCount;
@@ -495,7 +499,7 @@
         if (v === '') delete t.maxCount; else t.maxCount = Math.max(0, parseInt(v, 10) || 0);
         saveState();
       };
-      tr.cells[3].appendChild(maxIn);
+      tr.cells[4].appendChild(maxIn);
       tbl.appendChild(tr);
     });
     var wrap = document.createElement('div'); wrap.className = 'scroll'; wrap.appendChild(tbl);
@@ -1151,7 +1155,7 @@
       { key: 'avoidSelfStudyAfterPeriod2', label: '自習はできるだけ1,2校時だけにする' },
       { key: 'electivesPreferMidPeriods', label: '選択科目はできるだけ2,3校時にする' },
       { key: 'avoidCrossGradeSamePeriod', label: '学年違いの同じ教科を同じ校時にしない' },
-      { key: 'avoidSelfStudyEdgeDays', label: '自習は初日・最終日にせず、1回目は2日目にする' },
+      { key: 'avoidSelfStudyEdgeDays', label: '自習は最終日にしない' },
       { key: 'electivesOnePerDay', label: '選択科目、自習は1日1科目までにする' },
       { key: 'avoidSameDeptSameDay', label: '1日に同じ教科(国・数・英・理・社など)を重ねない' }
     ].forEach(function (rule) {
@@ -1198,7 +1202,10 @@
       clearScheduleConfirmPending = false;
       // 教科グループの監督割り当て(場所ごと)で指定した場所は、日時が変わっても引き継ぐために先に取り出しておく。
       var groupLocations = Engine.captureGroupLocations(state);
-      state.exams = {};
+      // 教科を固定したコマだけは残し、それ以外の時間割を空にする。
+      var keptExams = {};
+      Object.keys(state.exams || {}).forEach(function (k) { if (state.exams[k] && state.exams[k].locked) keptExams[k] = state.exams[k]; });
+      state.exams = keptExams;
       var keepAssign = {}, keepLoc = {};
       Object.keys(state.assignments || {}).forEach(function (key) {
         if (Engine.isReserveCls(key.split('|')[2])) keepAssign[key] = state.assignments[key];
@@ -1242,7 +1249,28 @@
     };
     lockRow.appendChild(lockAllBtn); lockRow.appendChild(unlockAllBtn); lockRow.appendChild(lockInfo);
     card.appendChild(lockRow);
+
+    // 教科だけの固定をまとめて付け外しする(教科が入っているコマだけが対象)。
+    var subjLockRow = document.createElement('div'); subjLockRow.className = 'row';
+    var subjKeys = Object.keys(state.exams || {}).filter(function (k) { return state.exams[k] && state.exams[k].subject; });
+    var subjLockedNow = subjKeys.filter(function (k) { return state.exams[k].locked; }).length;
+    var subjLockAll = document.createElement('button'); subjLockAll.className = 'b sec sm'; subjLockAll.textContent = '教科をすべて固定';
+    subjLockAll.onclick = function () {
+      if (!subjKeys.length) { toast('教科が入っているコマがありません'); return; }
+      subjKeys.forEach(function (k) { state.exams[k].locked = true; });
+      saveState(); toast(subjKeys.length + 'コマの教科を固定しました'); renderAll();
+    };
+    var subjUnlockAll = document.createElement('button'); subjUnlockAll.className = 'b sec sm'; subjUnlockAll.textContent = '教科の固定をすべて解除';
+    subjUnlockAll.onclick = function () {
+      Object.keys(state.exams || {}).forEach(function (k) { if (state.exams[k]) delete state.exams[k].locked; });
+      saveState(); toast('教科の固定をすべて解除しました'); renderAll();
+    };
+    var subjLockInfo = document.createElement('span'); subjLockInfo.className = 'mut';
+    subjLockInfo.textContent = '教科固定: ' + subjLockedNow + ' / ' + subjKeys.length + 'コマ(固定した教科は「時間割をクリアして組み直す」や自動調整でも動きません)';
+    subjLockRow.appendChild(subjLockAll); subjLockRow.appendChild(subjUnlockAll); subjLockRow.appendChild(subjLockInfo);
+    card.appendChild(subjLockRow);
     view.appendChild(card);
+    renderPlans(view);
 
     // 警告: 現割り当てのうち、現状の制約(出題者/出張/多忙)に違反しているものを検出
     var monitorSlots = Engine.listMonitorSlots(state);
@@ -1257,6 +1285,8 @@
       var setters = Engine.settersAtTime(state, slot.dayId, slot.period);
       if (setters.indexOf(a.teacherId) !== -1) { warnMap[key] = '出題者と同一'; return; }
       if (Engine.isAbsent(state, a.teacherId, slot.date, slot.period)) { warnMap[key] = '出張・欠勤中'; return; }
+      var at = state.teachers.filter(function (t) { return t.id === a.teacherId; })[0];
+      if (at && at.reserveOnly && !slot.reserve) { warnMap[key] = '予備のみの教員'; return; }
     }
     monitorSlots.forEach(checkWarn);
     reserveSlots.forEach(checkWarn);
@@ -1270,6 +1300,19 @@
     });
     var dlWrap = document.createElement('div'); dlWrap.innerHTML = dlHtml;
     view.appendChild(dlWrap);
+
+    // クラスごとに、どの教科が既にどのコマ(「12/2 3校時」)に置かれているか(プルダウンで「配置済」と示すため)。
+    var placedSubjectsByClass = {};
+    state.testDays.forEach(function (day) {
+      Engine.periodsForDay(state, day.id).forEach(function (period) {
+        state.classes.forEach(function (c) {
+          var ex = state.exams[Engine.slotKey(day.id, period, c)];
+          if (!ex || !ex.subject) return;
+          placedSubjectsByClass[c] = placedSubjectsByClass[c] || {};
+          (placedSubjectsByClass[c][ex.subject] = placedSubjectsByClass[c][ex.subject] || []).push(monthDayLabel(day.date) + ' ' + period + '校時');
+        });
+      });
+    });
 
     // 監督(または自習の見守り)1人分の行(教員選択・確定・場所)を組み立てる。
     // horizontal=trueなら、教員選択・確定・場所を縦積みではなく横並びにする。
@@ -1350,18 +1393,61 @@
           var td = document.createElement('td');
           var cellDiv = document.createElement('div'); cellDiv.className = 'sched-cell';
 
-          var subjInput = document.createElement('input');
-          subjInput.setAttribute('list', 'dl-' + cls);
-          subjInput.value = (state.exams[key] && state.exams[key].subject) || '';
-          subjInput.placeholder = '(自習)';
-          subjInput.onchange = function () {
-            var v = subjInput.value.trim();
+          // 教科はプルダウンから選ぶ(その学年の決定済み教科・教科グループ・自習)。候補に無い教科は「その他」で手入力。
+          var curSubj = (state.exams[key] && state.exams[key].subject) || '';
+          var setSubject = function (v) {
+            v = (v || '').trim();
+            if (v === curSubj) return;
             if (v) state.exams[key] = { subject: v }; else delete state.exams[key];
             // 科目が変わったら確定状態を解除し、割り当てを見直す
             delete state.assignments[key];
             saveState(); renderAll();
           };
-          cellDiv.appendChild(subjInput);
+          var subjSel = document.createElement('select');
+          subjSel.className = 'subj-select';
+          var addOpt = function (value, label) {
+            var o = document.createElement('option'); o.value = value; o.textContent = label;
+            if (value === curSubj) o.selected = true;
+            subjSel.appendChild(o);
+          };
+          addOpt('', '(自習)');
+          var cands = scheduleOptionsFor(cls).slice();
+          if (curSubj && cands.indexOf(curSubj) === -1) cands.unshift(curSubj);
+          var placedAt = placedSubjectsByClass[cls] || {};
+          cands.forEach(function (s) {
+            var where = (s !== curSubj && placedAt[s]) ? ' (' + placedAt[s].join('・') + 'に配置済)' : '';
+            addOpt(s, s + where);
+          });
+          addOpt('__other__', 'その他(手入力)…');
+          subjSel.onchange = function () {
+            if (subjSel.value !== '__other__') { setSubject(subjSel.value); return; }
+            var inp = document.createElement('input');
+            inp.placeholder = '教科名を入力して Enter';
+            inp.value = curSubj;
+            inp.onkeydown = function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); setSubject(inp.value); } if (ev.key === 'Escape') renderAll(); };
+            inp.onblur = function () { if (inp.value.trim() && inp.value.trim() !== curSubj) setSubject(inp.value); else renderAll(); };
+            subjSel.parentNode.replaceChild(inp, subjSel);
+            inp.focus();
+          };
+          // 教科だけの固定。固定中はプルダウンを変更不可にし、「AIで計算」の調整や「時間割をクリアして組み直す」でも動かさない。
+          var subjLocked = !!(state.exams[key] && state.exams[key].locked);
+          var subjLine = document.createElement('div'); subjLine.className = 'subj-line';
+          subjSel.disabled = subjLocked;
+          subjLine.appendChild(subjSel);
+          if (curSubj) {
+            var sl = document.createElement('label'); sl.className = 'inl subj-lock' + (subjLocked ? ' on' : '');
+            sl.title = '教科を固定(自動調整や組み直しで変わらないようにする)';
+            var scb = document.createElement('input'); scb.type = 'checkbox'; scb.checked = subjLocked;
+            scb.onchange = function () {
+              var ex = state.exams[key];
+              if (!ex) return;
+              if (scb.checked) ex.locked = true; else delete ex.locked;
+              saveState(); renderAll();
+            };
+            sl.appendChild(scb); sl.appendChild(document.createTextNode('教科固定'));
+            subjLine.appendChild(sl);
+          }
+          cellDiv.appendChild(subjLine);
 
           var e = state.exams[key];
           var hasSubject = !!(e && e.subject);
@@ -1498,7 +1584,7 @@
       var bySubj = (stats[t.id] && stats[t.id].bySubject) || {};
       var subjStr = Object.keys(bySubj).map(function (s) { return s + '×' + bySubj[s]; }).join(' / ');
       var row = document.createElement('div'); row.className = 'bal';
-      row.innerHTML = '<span class="name">' + esc(t.name) + (t.noCover ? '(対象外)' : '') + (t.maxCount != null ? '(上限' + t.maxCount + ')' : '') + '</span>' +
+      row.innerHTML = '<span class="name">' + esc(t.name) + (t.noCover ? '(対象外)' : '') + (t.reserveOnly ? '(予備のみ)' : '') + (t.maxCount != null ? '(上限' + t.maxCount + ')' : '') + '</span>' +
         '<span class="bar" style="width:' + (120 * n / maxN) + 'px"></span><span class="n">' + n + '</span>' +
         '<span class="mut" style="font-size:11px">' + esc(subjStr) + '</span>';
       card3.appendChild(row);
@@ -1548,6 +1634,136 @@
       }
     });
     view.appendChild(card2);
+  }
+
+  // ---- 案の保存・切り替え ----
+  // 試験時間割(exams)・監督割り当て(assignments)・場所(examLocations)を「案」として名前を付けて保存し、
+  // 別の案を作りながら、あとで開き直したり最終的に決定したりできるようにする。state.plans に保存される。
+  var planConfirm = null; // {id, action} 2回押しの確認待ち
+  function planSnapshot() {
+    return {
+      exams: JSON.parse(JSON.stringify(state.exams || {})),
+      assignments: JSON.parse(JSON.stringify(state.assignments || {})),
+      examLocations: JSON.parse(JSON.stringify(state.examLocations || {}))
+    };
+  }
+  function sameSnapshot(a, b) {
+    return JSON.stringify(a.exams) === JSON.stringify(b.exams) &&
+      JSON.stringify(a.assignments) === JSON.stringify(b.assignments) &&
+      JSON.stringify(a.examLocations) === JSON.stringify(b.examLocations);
+  }
+  // 今の内容と案の違い(教科が違うコマ数・監督が違うコマ数)
+  function planDiff(p) {
+    var cur = planSnapshot();
+    var exKeys = {}, asKeys = {};
+    Object.keys(cur.exams).concat(Object.keys(p.exams || {})).forEach(function (k) { exKeys[k] = true; });
+    Object.keys(cur.assignments).concat(Object.keys(p.assignments || {})).forEach(function (k) { asKeys[k] = true; });
+    var subj = 0, proc = 0;
+    Object.keys(exKeys).forEach(function (k) {
+      var a = (cur.exams[k] && cur.exams[k].subject) || '', b = (p.exams[k] && p.exams[k].subject) || '';
+      if (a !== b) subj++;
+    });
+    Object.keys(asKeys).forEach(function (k) {
+      var a = (cur.assignments[k] && cur.assignments[k].teacherId) || '', b = (p.assignments[k] && p.assignments[k].teacherId) || '';
+      if (a !== b) proc++;
+    });
+    return { subj: subj, proc: proc };
+  }
+  function fmtTime(ms) {
+    var d = new Date(ms);
+    return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + ('0' + d.getMinutes()).slice(-2);
+  }
+  function renderPlans(view) {
+    if (!Array.isArray(state.plans)) state.plans = [];
+    var plans = state.plans;
+    var card = document.createElement('div'); card.className = 'card';
+    card.innerHTML = '<h2>案の保存・切り替え</h2>' +
+      '<p class="mut">今の試験時間割と監督割り当てを「案」として保存しておけます。保存したあとも自由に作り直せて、' +
+      '「開く」で保存した案に戻せます。いくつか案を作って比べ、最後に「この案に決定」を押すと、その案が今の内容になり「決定」の印が付きます。</p>';
+
+    var cur = planSnapshot();
+    var matching = plans.filter(function (p) { return sameSnapshot(p, cur); })[0];
+    var status = document.createElement('div'); status.className = 'mut'; status.style.marginBottom = '6px';
+    status.innerHTML = '今の内容: ' + (matching ? '<b>' + esc(matching.name) + '</b>と同じ' + (state.finalPlanId === matching.id ? ' <span class="chip" style="background:var(--ok);color:#fff">決定</span>' : '') : '<span class="warn">どの案にも保存されていません</span>');
+    card.appendChild(status);
+
+    var saveRow = document.createElement('div'); saveRow.className = 'row';
+    var nameInp = document.createElement('input'); nameInp.placeholder = '案の名前(例: 案A)';
+    nameInp.value = '案' + String.fromCharCode(65 + Math.min(plans.length, 25));
+    var saveBtn = document.createElement('button'); saveBtn.className = 'b'; saveBtn.textContent = '今の内容を新しい案として保存';
+    saveBtn.onclick = function () {
+      var name = nameInp.value.trim() || ('案' + (plans.length + 1));
+      var snap = planSnapshot();
+      plans.push({ id: uid('plan'), name: name, savedAt: Date.now(), exams: snap.exams, assignments: snap.assignments, examLocations: snap.examLocations });
+      planConfirm = null;
+      saveState(); toast('「' + name + '」として保存しました'); renderAll();
+    };
+    saveRow.appendChild(nameInp); saveRow.appendChild(saveBtn);
+    card.appendChild(saveRow);
+
+    if (plans.length) {
+      var tbl = document.createElement('table');
+      tbl.innerHTML = '<tr><th>案</th><th>保存日時</th><th>今の内容との違い</th><th>操作</th></tr>';
+      plans.forEach(function (p) {
+        var tr = document.createElement('tr');
+        var d = planDiff(p);
+        var diffText = (d.subj || d.proc) ? ('教科 ' + d.subj + 'コマ・監督 ' + d.proc + 'コマ') : '同じ';
+        var isFinal = state.finalPlanId === p.id;
+        tr.innerHTML = '<td><b>' + esc(p.name) + '</b>' + (isFinal ? ' <span class="chip" style="background:var(--ok);color:#fff">決定</span>' : '') + '</td>' +
+          '<td>' + esc(fmtTime(p.savedAt)) + '</td><td>' + esc(diffText) + '</td>';
+        var tdOps = document.createElement('td');
+        var ops = document.createElement('div'); ops.className = 'row'; ops.style.margin = '0';
+        function opBtn(action, label, confirmLabel, cls, fn) {
+          var pending = planConfirm && planConfirm.id === p.id && planConfirm.action === action;
+          var b = document.createElement('button');
+          b.className = pending ? 'b del' : ('b sm ' + (cls || 'sec'));
+          b.textContent = pending ? confirmLabel : label;
+          b.onclick = function () {
+            if (confirmLabel && !pending) { planConfirm = { id: p.id, action: action }; renderAll(); return; }
+            planConfirm = null; fn();
+          };
+          ops.appendChild(b);
+        }
+        var unsaved = !matching;
+        opBtn('open', '開く', unsaved ? '今の内容は未保存です。それでも開く' : null, 'sec', function () {
+          state.exams = JSON.parse(JSON.stringify(p.exams || {}));
+          state.assignments = JSON.parse(JSON.stringify(p.assignments || {}));
+          state.examLocations = JSON.parse(JSON.stringify(p.examLocations || {}));
+          saveState(); toast('「' + p.name + '」を開きました'); renderAll();
+        });
+        opBtn('final', isFinal ? '決定済み' : 'この案に決定', 'もう一度押すと決定(今の内容がこの案になります)', '', function () {
+          state.exams = JSON.parse(JSON.stringify(p.exams || {}));
+          state.assignments = JSON.parse(JSON.stringify(p.assignments || {}));
+          state.examLocations = JSON.parse(JSON.stringify(p.examLocations || {}));
+          state.finalPlanId = p.id;
+          saveState(); toast('「' + p.name + '」に決定しました'); renderAll();
+        });
+        opBtn('overwrite', '今の内容で上書き', 'もう一度押すと上書き', 'sec', function () {
+          var snap = planSnapshot();
+          p.exams = snap.exams; p.assignments = snap.assignments; p.examLocations = snap.examLocations; p.savedAt = Date.now();
+          saveState(); toast('「' + p.name + '」を上書きしました'); renderAll();
+        });
+        opBtn('rename', '名前変更', null, 'sec', function () {
+          var cell = tr.firstChild;
+          var inp = document.createElement('input'); inp.value = p.name; inp.style.width = '120px';
+          var commit = function () { var v = inp.value.trim(); if (v) p.name = v; saveState(); renderAll(); };
+          inp.onkeydown = function (ev) { if (ev.key === 'Enter') commit(); if (ev.key === 'Escape') renderAll(); };
+          inp.onblur = commit;
+          cell.innerHTML = ''; cell.appendChild(inp); inp.focus(); inp.select();
+        });
+        opBtn('delete', '削除', 'もう一度押すと削除', 'del', function () {
+          state.plans = state.plans.filter(function (x) { return x.id !== p.id; });
+          if (state.finalPlanId === p.id) delete state.finalPlanId;
+          saveState(); toast('「' + p.name + '」を削除しました'); renderAll();
+        });
+        tdOps.appendChild(ops);
+        tr.appendChild(tdOps);
+        tbl.appendChild(tr);
+      });
+      var wrap = document.createElement('div'); wrap.className = 'scroll'; wrap.style.marginTop = '8px'; wrap.appendChild(tbl);
+      card.appendChild(wrap);
+    }
+    view.appendChild(card);
   }
 
   // ---- 教員別一覧 ----
@@ -1685,7 +1901,7 @@
         }
         return '<td class="' + cls + '">' + esc(parts.join(' / ')) + '</td>';
       }).join('');
-      tr.innerHTML = '<td>' + deptCell + '</td><td>' + esc(row.name) + (row.noCover ? '<span class="mut">(対象外)</span>' : '') + (row.maxCount != null ? '<span class="mut">(上限' + row.maxCount + ')</span>' : '') + '</td>' +
+      tr.innerHTML = '<td>' + deptCell + '</td><td>' + esc(row.name) + (row.noCover ? '<span class="mut">(対象外)</span>' : '') + (row.reserveOnly ? '<span class="mut">(予備のみ)</span>' : '') + (row.maxCount != null ? '<span class="mut">(上限' + row.maxCount + ')</span>' : '') + '</td>' +
         cells + '<td><b>' + row.nonReserveTotal + '</b>(' + row.total + ')</td>';
       tbl.appendChild(tr);
     });
