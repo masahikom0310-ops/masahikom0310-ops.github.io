@@ -1151,7 +1151,7 @@
       { key: 'avoidSelfStudyAfterPeriod2', label: '自習はできるだけ1,2校時だけにする' },
       { key: 'electivesPreferMidPeriods', label: '選択科目はできるだけ2,3校時にする' },
       { key: 'avoidCrossGradeSamePeriod', label: '学年違いの同じ教科を同じ校時にしない' },
-      { key: 'avoidSelfStudyEdgeDays', label: '自習は最終日にしない' },
+      { key: 'avoidSelfStudyEdgeDays', label: '自習は初日・最終日にせず、1回目は2日目にする' },
       { key: 'electivesOnePerDay', label: '選択科目、自習は1日1科目までにする' },
       { key: 'avoidSameDeptSameDay', label: '1日に同じ教科(国・数・英・理・社など)を重ねない' }
     ].forEach(function (rule) {
