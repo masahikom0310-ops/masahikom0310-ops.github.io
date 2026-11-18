@@ -50,6 +50,12 @@ td.absent,.abs-legend{background-color:var(--gray);background-image:repeating-li
 .sched-cell-h{flex-direction:row;align-items:center;flex-wrap:wrap}
 .sched-cell-h select{width:auto;min-width:110px}
 .sched-cell-h label.inl{white-space:nowrap}
+.subj-line{display:flex;flex-wrap:wrap;gap:2px 4px;align-items:center}
+.subj-line select{flex:1 1 100%;min-width:0}
+.grid-sched .subj-lock input{width:auto;min-width:0;margin:0}
+.subj-line select:disabled{opacity:1;background:var(--sw);color:var(--fg);font-weight:700}
+.subj-lock{font-size:11px;white-space:nowrap;color:var(--mut)}
+.subj-lock.on{color:var(--pri);font-weight:700}
 .lockbtn{cursor:pointer;font-size:11px;border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(--card)}
 .lockbtn.on{background:var(--sw);border-color:var(--pri)}
 @media (max-width:640px){main{padding:10px}}

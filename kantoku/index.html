@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1d6fd6">
 <meta name="robots" content="noindex,nofollow">
 <title>定期テスト監督割り当て</title>
-<link rel="stylesheet" href="style.css?v=20261117125253">
+<link rel="stylesheet" href="style.css?v=20261118115758">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png">
@@ -40,23 +40,25 @@
 <div id="appRoot" hidden>
   <header class="top">
     <button class="b sec sm lockbar" id="lockBtn" type="button">ロック</button>
+    <button class="b sec sm lockbar" id="bundleBtn" type="button" style="margin-right:6px" hidden>PC版のデータを入れる</button>
     <h1>定期テスト監督割り当て</h1>
     <span class="sub">授業交換ナビの授業データを使って、出張・欠勤・出題者を避けつつ監督回数と教科をバランスよく割り当てます</span>
     <div id="cloudStatus" class="sub" hidden></div>
+    <div class="sub" id="verInfo"></div>
   </header>
   <nav id="tabs" class="tabs"></nav>
   <main id="view"></main>
   <div id="toast" class="toast" hidden></div>
 </div>
 
-<script src="data.enc.js?v=20261117125253"></script>
+<script src="data.enc.js?v=20261118115758"></script>
 <script>
 (function () {
   'use strict';
   var STATE_KEY = 'teiki-test-kantoku-v1';
   var CODE_KEY = 'kantoku-access-code';
   var SEED_KEY = 'kantoku-seeded-at';
-  var VER = '20261117125253';
+  var VER = '20261118115758';
 
   function b64(s) { var bin = atob(s); var a = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return a; }
 
@@ -103,6 +105,27 @@
     }
     document.getElementById('gate').hidden = true;
     document.getElementById('appRoot').hidden = false;
+    // アプリの版と、同梱しているPC版データの時点を表示する(古い版のまま動いていないか確認できるように)。
+    var fmt = function (iso) { var d = new Date(iso); return isNaN(d) ? '' : (d.getMonth() + 1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + ('0' + d.getMinutes()).slice(-2); };
+    document.getElementById('verInfo').textContent = 'アプリの版: ' + VER.slice(0, 4) + '/' + VER.slice(4, 6) + '/' + VER.slice(6, 8) +
+      (payload.exportedAt ? ' ・ 同梱のPC版データ: ' + fmt(payload.exportedAt) + '時点' : '');
+    // 同梱しているPC版データ(公開時点)で、この端末のデータを置き換えるボタン(2回押しで実行)。
+    if (payload.state) {
+      var bb = document.getElementById('bundleBtn');
+      var pending = false;
+      bb.hidden = false;
+      bb.title = '公開した時点のPC版データ(' + fmt(payload.exportedAt) + ')で、この端末のデータをまるごと置き換えます';
+      bb.onclick = function () {
+        if (!pending) {
+          pending = true; bb.className = 'b del sm lockbar'; bb.textContent = 'もう一度押すと置き換え(元に戻せません)';
+          setTimeout(function () { if (pending) { pending = false; bb.className = 'b sec sm lockbar'; bb.textContent = 'PC版のデータを入れる'; } }, 6000);
+          return;
+        }
+        lsSet(STATE_KEY, JSON.stringify(payload.state));
+        lsSet(SEED_KEY, payload.exportedAt || '');
+        location.reload();
+      };
+    }
     try {
       await loadScript('engine.js');
       await loadScript('app.js');
@@ -128,7 +151,7 @@
   else document.getElementById('gateCode').focus();
 
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
-    window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
+    window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(function () {}); });
   }
 })();
 </script>
