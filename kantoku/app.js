@@ -1608,7 +1608,7 @@
     var totalCols = 2 + grid.columns.length + 1;
     var head = '<thead><tr><th>教科</th><th>氏名</th>' +
       grid.columns.map(function (col) { return '<th>' + esc(monthDayLabel(col.date)) + '<br>' + col.period + '校時</th>'; }).join('') +
-      '<th>回数<br>(予備以外(予備含む))</th></tr></thead>';
+      '<th>回数<br>(予備以外の回数(予備含めた回数))</th></tr></thead>';
     tbl.innerHTML = head;
 
     printBar.querySelector('#tvPrintBtn').onclick = function () {
