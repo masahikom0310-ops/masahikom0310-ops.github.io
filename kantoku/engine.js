@@ -522,15 +522,15 @@
     return rules[key] !== false;
   }
 
-  // 自習(空きコマ)を最終日以外に寄せるためのテスト日程の処理順。
-  // 最終日を先に(教科で)埋め、残りの日は最終日に近い方から埋めていくことで、
-  // 教科が足りなくなる(=自習になる)のは初日側から順になるようにする。2日以上あるときだけ意味を持つ。
+  // 自習(空きコマ)を初日・最終日以外に寄せ、さらに自習の1回目は2日目にするためのテスト日程の処理順。
+  // 初日・最終日を先に(教科で)埋め、中間日は最終日に近い方から埋めていくことで、中間日の中で
+  // 最初に教科が足りなくなる(=自習になる)のが2日目になるようにする。3日以上あるときだけ意味を持つ。
   function edgeDaysFirstOrder(testDays) {
     var days = (testDays || []).slice().sort(function (a, b) { return a.date < b.date ? -1 : (a.date > b.date ? 1 : 0); });
-    if (days.length <= 1) return days;
-    var last = days[days.length - 1];
-    var rest = days.slice(0, days.length - 1);
-    return [last].concat(rest.slice().reverse());
+    if (days.length <= 2) return days;
+    var first = days[0], last = days[days.length - 1];
+    var middle = days.slice(1, days.length - 1);
+    return [first, last].concat(middle.slice().reverse());
   }
 
   // 試験教科決定(examSubjects・教科グループ)と日程・時限から、試験時間割(exams)を自動で埋める。
@@ -542,7 +542,7 @@
   //   avoidSelfStudyAfterPeriod2: 自習(空きコマ)をできるだけ1,2校時だけにする(3校時以降を先に埋める)
   //   electivesPreferMidPeriods: 教科グループ(選択科目)を、必須教科より先に2・3校時の枠に割り当てる(1日ずつ両方使い切ってから次の日へ)
   //   avoidCrossGradeSamePeriod: 学年が違っても同じ教科名なら、日にちが違っていても同じ校時にしない(可能な範囲で)
-  //   avoidSelfStudyEdgeDays: 自習(空きコマ)をできるだけ最終日以外に寄せる
+  //   avoidSelfStudyEdgeDays: 自習(空きコマ)をできるだけ初日・最終日以外(中間日)に寄せ、1回目は2日目にする
   //   electivesOnePerDay: 教科グループ(選択科目)は1日に1つまでにする(同じ日の2校時・3校時に別々の選択科目を置かない)。
   //                       自習(空きコマ)も1日に1つまでにする(可能な範囲で、自習が2つ以上の日から別の日へ散らす)
   //   avoidSameDeptSameDay: 同じ日に同じ教科グループ(国語・数学・英語・理科・社会など)を重ねない(可能な範囲で)
